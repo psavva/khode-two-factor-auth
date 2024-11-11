@@ -24,7 +24,7 @@ administrators greater flexibility in implementing and managing 2FA.
 
 2. Copy the resulting JAR file to the Keycloak deployments directory:
    ```
-   cp target/khode-two-factor-auth.jar /path/to/keycloak/standalone/deployments/
+   cp target/khode-two-factor-auth.jar /path/to/keycloak/providers/
    ```
 
 3. Restart Keycloak to load the new extension.
