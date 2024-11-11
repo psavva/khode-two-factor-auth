@@ -67,7 +67,6 @@
                 <version>3.7.0</version>
                 <configuration>
                     <outputDirectory>${project.build.directory}/openapi</outputDirectory>
-                    <scanPackage>com.khodecamp.two.factor.auth</scanPackage>
                     <infoDescription>This is a REST API for two factor authentication</infoDescription>
                 </configuration>
                 <executions>
@@ -80,5 +79,15 @@
             </plugin>
         </plugins>
     </build>
+
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <!--suppress UnresolvedMavenProperty -->
+            <url>https://maven.pkg.github.com/${GITHUB_REPOSITORY}</url>
+        </repository>
+    </distributionManagement>
+
 
 </project>
