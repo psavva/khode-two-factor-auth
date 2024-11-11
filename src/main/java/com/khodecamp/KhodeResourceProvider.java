@@ -21,7 +21,6 @@ import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager.AuthResult;
 import org.keycloak.services.resource.RealmResourceProvider;
 
-import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -54,14 +53,14 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
     // Check permissions and get user
     private UserModel checkPermissionsAndGetUser(final String userid) {
-        AuthResult auth = checkAuth();
 
+        // Check if the request is authenticated
         final UserModel user = this.session.users().getUserById(this.session.getContext().getRealm(), userid);
         if (user == null) {
             throw new ForbiddenException("invalid user");
         }
         if (user.getServiceAccountClientLink() != null) {
-            throw new ForbiddenException("Cannot manage 2fa of service account");
+            throw new ForbiddenException("Service account not allowed");
         }
 
         return user;
@@ -268,7 +267,6 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
         // Get the first TOTP credential
         OTPCredentialModel credential = OTPCredentialModel.createFromCredentialModel(totpCredentials.getFirst());
-        System.out.println("Decoded secret: " + Arrays.toString(credential.getDecodedSecret()));
 
         // Validate the code
         boolean validCode = timeBasedOTP.validateTOTP(code, credential.getDecodedSecret());
