@@ -1,23 +1,19 @@
 # khode-two-factor-auth
-A comprehensive Keycloak extension that enhances the platform's Two-Factor Authentication (2FA) capabilities by providing advanced management and control over Time-based One-Time Password (TOTP) functionality. This extension offers a set of RESTful APIs that allow for programmatic setup, verification, management, and disabling of TOTP for users, making it ideal for custom implementations and integrations.
 
-Key highlights of this extension include:
+khode-two-factor-auth is a Keycloak extension that provides a REST API for managing Time-based One-Time Password (TOTP)
+authentication. This extension allows you to set up, verify, enable, disable, and validate TOTP for users in a Keycloak
+realm.
 
-1. **Streamlined TOTP Setup**: Easily generate and provide TOTP secrets and QR codes for users, facilitating a smooth onboarding process for 2FA.
+## Features
 
-2. **Flexible Verification**: Verify TOTP codes and enable 2FA for users through a simple API call, allowing for custom verification flows.
+- Setup TOTP for a user
+- Verify and enable TOTP
+- Get TOTP status for a user
+- Validate TOTP code
+- Disable TOTP for a user
 
-3. **Status Monitoring**: Quickly retrieve the current TOTP status for any user, including details about their TOTP credentials.
-
-4. **Code Validation**: Validate TOTP codes on-demand, useful for implementing custom authentication flows or periodic security checks.
-
-5. **Easy Disabling**: Programmatically disable TOTP for users when needed, providing full control over the 2FA lifecycle.
-
-6. **Security-First Approach**: All endpoints require proper authentication and authorization, ensuring that sensitive 2FA operations are protected.
-
-7. **Compliance Ready**: Helps organizations meet security compliance requirements by providing robust 2FA management capabilities.
-
-This extension is designed to integrate seamlessly with existing Keycloak deployments, offering developers and administrators greater flexibility in implementing and managing 2FA. Whether you're building a custom user portal, integrating with a mobile app, or automating security processes, khode-two-factor-auth provides the tools you need to handle TOTP-based 2FA effectively and securely.
+This extension is designed to integrate seamlessly with existing Keycloak deployments, offering developers and
+administrators greater flexibility in implementing and managing 2FA.
 
 ## Installation
 
@@ -44,17 +40,21 @@ GET /realms/{realm}/khode-two-factor-auth/totp/setup/{user_id}
 ```
 
 Returns:
+
 ```json
 {
-    "secret": "BASE32_ENCODED_SECRET",
-    "qrCode": "otpauth://totp/...",
-    "policy": {
-        "algorithm": "HmacSHA1",
-        "digits": 6,
-        "period": 30,
-        "type": "totp"
-    },
-    "supportedApplications": ["FreeOTP", "Google Authenticator"]
+  "secret": "BASE32_ENCODED_SECRET",
+  "qrCode": "otpauth://totp/...",
+  "policy": {
+    "algorithm": "HmacSHA1",
+    "digits": 6,
+    "period": 30,
+    "type": "totp"
+  },
+  "supportedApplications": [
+    "FreeOTP",
+    "Google Authenticator"
+  ]
 }
 ```
 
@@ -72,10 +72,11 @@ Content-Type: application/json
 ```
 
 Returns:
+
 ```json
 {
-    "message": "TOTP enabled successfully",
-    "enabled": true
+  "message": "TOTP enabled successfully",
+  "enabled": true
 }
 ```
 
@@ -88,16 +89,17 @@ GET /realms/{realm}/khode-two-factor-auth/totp/status/{user_id}
 ```
 
 Returns:
+
 ```json
 {
-    "enabled": true,
-    "credentials": [
-        {
-            "id": "credential-id",
-            "type": "otp",
-            "createdDate": 1234567890
-        }
-    ]
+  "enabled": true,
+  "credentials": [
+    {
+      "id": "credential-id",
+      "type": "otp",
+      "createdDate": 1234567890
+    }
+  ]
 }
 ```
 
@@ -115,10 +117,11 @@ Content-Type: application/json
 ```
 
 Returns:
+
 ```json
 {
-    "message": "TOTP code validated successfully",
-    "valid": true
+  "message": "TOTP code validated successfully",
+  "valid": true
 }
 ```
 
@@ -131,10 +134,11 @@ DELETE /realms/{realm}/khode-two-factor-auth/totp/{user_id}
 ```
 
 Returns:
+
 ```json
 {
-    "message": "TOTP disabled successfully", 
-    "enabled": false
+  "message": "TOTP disabled successfully",
+  "enabled": false
 }
 ```
 
@@ -144,7 +148,8 @@ All endpoints require authentication using a bearer token with appropriate permi
 
 ## Error Handling
 
-The extension provides appropriate error responses for various scenarios, such as invalid codes, missing TOTP setup, etc.
+The extension provides appropriate error responses for various scenarios, such as invalid codes, missing TOTP setup,
+etc.
 
 ## Dependencies
 
