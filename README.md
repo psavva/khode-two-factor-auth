@@ -33,7 +33,6 @@ This extension is designed to integrate seamlessly with existing Keycloak deploy
 
 3. Restart Keycloak to load the new extension.
 
-```markdown
 ## Usage
 
 This extension provides the following REST endpoints:
