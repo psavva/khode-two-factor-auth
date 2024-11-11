@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # Changed from read to write
+      contents: write
       discussions: write # Added for releases
       packages: write
 
@@ -40,7 +40,7 @@ jobs:
         with:
           name: Release ${{ env.VERSION }}
           files: |
-            target/*.jar
+            target/khode-two-factor-auth-${{ env.VERSION }}.jar
           draft: false
           prerelease: false
           fail_on_unmatched_files: false
