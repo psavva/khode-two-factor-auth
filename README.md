@@ -25,6 +25,7 @@ You can either build the JAR file from source or download a pre-built version fr
 1. Go to the [Releases](https://github.com/chornthorn/khode-two-factor-auth/releases) page
 2. Download the latest `khode-two-factor-auth-x.x.x.jar` file (e.g. `khode-two-factor-auth-1.1.0.jar`)
 3. Copy the JAR file to your Keycloak deployments directory:
+
    ```
    cp khode-two-factor-auth-1.1.0.jar /path/to/keycloak/providers/
    ```
