@@ -6,6 +6,7 @@ realm.
 
 ## Features
 
+- Check if TOTP is configured for a user
 - Setup TOTP for a user
 - Verify and enable TOTP
 - Get TOTP status for a user
