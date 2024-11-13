@@ -33,10 +33,27 @@ administrators greater flexibility in implementing and managing 2FA.
 
 This extension provides the following REST endpoints:
 
+### Check if TOTP is Configured
+
+```http
+GET /realms/{realm}/khode-two-factor-auth/totp/is-configured/{user_id}
+```
+
+Returns:
+
+```json
+{
+  "configured": true,
+  "message": "TOTP is configured for this user"
+}
+```
+
+Checks if TOTP is already configured for the user.
+
 ### Setup TOTP
 
 ```http
-GET /realms/{realm}/khode-two-factor-auth/totp/setup/{user_id}
+POST /realms/{realm}/khode-two-factor-auth/totp/setup/{user_id}
 ```
 
 Returns:

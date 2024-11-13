@@ -4,6 +4,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.jbosslog.JBossLog;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
+@JBossLog
 public class KhodeResourceProvider implements RealmResourceProvider {
 
 
@@ -67,6 +69,38 @@ public class KhodeResourceProvider implements RealmResourceProvider {
     }
 
     @GET
+    @Path("totp/is-configured/{user_id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(
+            summary = "Check if TOTP is configured for user",
+            description = "This endpoint checks if the user has TOTP already configured in their account."
+    )
+    @APIResponse(
+            responseCode = "200",
+            description = "",
+            content = {@Content(
+                    schema = @Schema(
+                            implementation = Response.class,
+                            type = SchemaType.OBJECT
+                    )
+            )}
+    )
+    public Response isTotpConfigured(@PathParam("user_id") final String userid) {
+        final UserModel user = checkPermissionsAndGetUser(userid);
+
+        // Check if user has any TOTP credentials
+        boolean hasTotp = user.credentialManager()
+                .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
+                .findAny()
+                .isPresent();
+
+        return Response.ok(Map.of(
+                "configured", hasTotp,
+                "message", hasTotp ? "TOTP is configured for this user" : "TOTP is not configured for this user"
+        )).build();
+    }
+
+    @POST
     @Path("totp/setup/{user_id}")
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(
