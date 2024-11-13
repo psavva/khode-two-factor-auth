@@ -18,21 +18,49 @@ administrators greater flexibility in implementing and managing 2FA.
 
 ## Installation
 
-1. Build the project using Maven:
+You can either build the JAR file from source or download a pre-built version from the releases page.
+
+### Option 1: Download from Releases
+
+1. Go to the [Releases](https://github.com/chornthorn/khode-two-factor-auth/releases) page
+2. Download the latest `khode-two-factor-auth-x.x.x.jar` file (e.g. `khode-two-factor-auth-1.1.0.jar`)
+3. Copy the JAR file to your Keycloak deployments directory:
+   ```
+   cp khode-two-factor-auth-1.1.0.jar /path/to/keycloak/providers/
+   ```
+
+### Option 2: Build from Source
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/chornthorn/khode-two-factor-auth.git
+   ```
+
+2. Change to the project directory:
+   ```
+   cd khode-two-factor-auth
+   ```
+
+3. Build the project using Maven:
    ```
    mvn clean package
    ```
 
-2. Copy the resulting JAR file to the Keycloak deployments directory:
+4. Copy the resulting JAR file to the Keycloak deployments directory:
    ```
-   cp target/khode-two-factor-auth.jar /path/to/keycloak/providers/
+   cp target/khode-two-factor-auth-[version-number].jar /path/to/keycloak/providers/
    ```
 
-3. Restart Keycloak to load the new extension.
+After installing using either method, restart Keycloak to load the new extension.
 
 ## Usage
 
-This extension provides the following REST endpoints:
+This extension provides the following REST endpoints for managing TOTP authentication.
+
+**Note:** Requirement for before using it:
+   - Simple URL: `http://keycloak-server:[port]/realms/{realm}/khode-two-factor-auth/`
+   - Replace `{realm}` and `{user_id}` with the appropriate values.
+   - All endpoints require authentication using a bearer token with appropriate permissions.
 
 ### Check if TOTP is Configured
 
@@ -160,9 +188,7 @@ Returns:
 }
 ```
 
-## Authentication
-
-All endpoints require authentication using a bearer token with appropriate permissions.
+Disables TOTP for the user.
 
 ## Error Handling
 
