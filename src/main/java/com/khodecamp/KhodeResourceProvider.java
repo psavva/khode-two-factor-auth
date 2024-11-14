@@ -68,80 +68,120 @@ public class KhodeResourceProvider implements RealmResourceProvider {
         return user;
     }
 
+    // New private helper methods
+    private Response validateUserId(String userid) {
+        if (userid == null || userid.trim().isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid user ID"))
+                    .build();
+        }
+        return null;
+    }
+
+    private Response validateTotpCode(String code) {
+        if (code == null || code.trim().isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Code is required"))
+                    .build();
+        }
+        return null;
+    }
+
+    private Response checkTotpEnabled(UserModel user, boolean shouldBeEnabled) {
+        var totpCredentials = user.credentialManager()
+                .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
+                .toList();
+        
+        boolean hasTotp = !totpCredentials.isEmpty();
+        
+        if (shouldBeEnabled && !hasTotp) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "TOTP is not enabled for this user"))
+                    .build();
+        }
+        
+        if (!shouldBeEnabled && hasTotp) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "TOTP is already configured for this user"))
+                    .build();
+        }
+        
+        return null;
+    }
+
+    private Response handleServerError(String operation, String userid, Exception e) {
+        log.error("Error while " + operation + " for user: " + userid, e);
+        return Response.serverError()
+                .entity(Map.of("error", "Internal server error"))
+                .build();
+    }
+
     @GET
     @Path("totp/is-configured/{user_id}")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Check if TOTP is configured for user",
-            description = "This endpoint checks if the user has TOTP already configured in their account."
-    )
-    @APIResponse(
-            responseCode = "200",
-            description = "",
-            content = {@Content(
-                    schema = @Schema(
-                            implementation = Response.class,
-                            type = SchemaType.OBJECT
-                    )
-            )}
-    )
+    @Operation(summary = "Check if TOTP is configured for user")
+    @APIResponse(responseCode = "200", description = "TOTP status retrieved successfully")
+    @APIResponse(responseCode = "400", description = "Invalid user ID")
+    @APIResponse(responseCode = "500", description = "Internal server error")
     public Response isTotpConfigured(@PathParam("user_id") final String userid) {
-        final UserModel user = checkPermissionsAndGetUser(userid);
+        Response validation = validateUserId(userid);
+        if (validation != null) return validation;
 
-        // Check if user has any TOTP credentials
-        boolean hasTotp = user.credentialManager()
-                .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
-                .findAny()
-                .isPresent();
+        try {
+            final UserModel user = checkPermissionsAndGetUser(userid);
+            boolean hasTotp = user.credentialManager()
+                    .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
+                    .findAny()
+                    .isPresent();
 
-        return Response.ok(Map.of(
-                "configured", hasTotp,
-                "message", hasTotp ? "TOTP is configured for this user" : "TOTP is not configured for this user"
-        )).build();
+            return Response.ok(Map.of(
+                    "configured", hasTotp,
+                    "message", hasTotp ? "TOTP is configured for this user" : "TOTP is not configured for this user",
+                    "userId", userid
+            )).build();
+        } catch (Exception e) {
+            return handleServerError("checking TOTP configuration", userid, e);
+        }
     }
 
     @POST
     @Path("totp/setup/{user_id}")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Setup TOTP for user",
-            description = "This endpoint generates a TOTP secret for the user and returns the secret and QR code."
-    )
-    @APIResponse(
-            responseCode = "200",
-            description = "",
-            content = {@Content(
-                    schema = @Schema(
-                            implementation = Response.class,
-                            type = SchemaType.OBJECT
-                    )
-            )}
-    )
+    @Operation(summary = "Setup TOTP for user")
+    @APIResponse(responseCode = "200", description = "TOTP setup successful")
+    @APIResponse(responseCode = "400", description = "Invalid user ID or TOTP already configured")
+    @APIResponse(responseCode = "500", description = "Internal server error")
     public Response setupTotp(@PathParam("user_id") final String userid) {
+        Response validation = validateUserId(userid);
+        if (validation != null) return validation;
 
-        // Check permissions and get user
-        final UserModel user = checkPermissionsAndGetUser(userid);
-        final RealmModel realm = session.getContext().getRealm();
+        try {
+            final UserModel user = checkPermissionsAndGetUser(userid);
+            
+            // Check if TOTP is already configured
+            validation = checkTotpEnabled(user, false);
+            if (validation != null) return validation;
 
-        // Create TotpBean without UriBuilder as we don't need UI specific URLs
-        TotpBean totpBean = new TotpBean(session, realm, user, null);
+            final RealmModel realm = session.getContext().getRealm();
+            TotpBean totpBean = new TotpBean(session, realm, user, null);
+            user.setSingleAttribute("temp_totp_secret", totpBean.getTotpSecret());
+            OTPPolicy otpPolicy = realm.getOTPPolicy();
 
-        // Store the TOTP secret temporarily
-        user.setSingleAttribute("temp_totp_secret", totpBean.getTotpSecret());
-
-        OTPPolicy otpPolicy = realm.getOTPPolicy();
-
-        return Response.ok(Map.of(
-                "secret", totpBean.getTotpSecretEncoded(),
-                "qrCode", totpBean.getTotpSecretQrCode(),
-                "policy", Map.of(
-                        "algorithm", otpPolicy.getAlgorithm(),
-                        "digits", otpPolicy.getDigits(),
-                        "period", otpPolicy.getPeriod(),
-                        "type", otpPolicy.getType()
-                ),
-                "supportedApplications", totpBean.getSupportedApplications()
-        )).build();
+            return Response.ok(Map.of(
+                    "secret", totpBean.getTotpSecretEncoded(),
+                    "qrCode", totpBean.getTotpSecretQrCode(),
+                    "policy", Map.of(
+                            "algorithm", otpPolicy.getAlgorithm(),
+                            "digits", otpPolicy.getDigits(),
+                            "period", otpPolicy.getPeriod(),
+                            "type", otpPolicy.getType()
+                    ),
+                    "supportedApplications", totpBean.getSupportedApplications(),
+                    "userId", userid
+            )).build();
+        } catch (Exception e) {
+            return handleServerError("setting up TOTP", userid, e);
+        }
     }
 
     @POST
@@ -163,13 +203,15 @@ public class KhodeResourceProvider implements RealmResourceProvider {
             )}
     )
     public Response verifyAndEnableTotp(@PathParam("user_id") final String userid, Map<String, String> data) {
+        Response validation = validateUserId(userid);
+        if (validation != null) return validation;
+
         final UserModel user = checkPermissionsAndGetUser(userid);
         final RealmModel realm = session.getContext().getRealm();
         String code = data.get("code");
 
-        if (code == null || code.trim().isEmpty()) {
-            throw new BadRequestException("Code is required");
-        }
+        validation = validateTotpCode(code);
+        if (validation != null) return validation;
 
         String totpSecret = user.getFirstAttribute("temp_totp_secret");
         if (totpSecret == null) {
@@ -220,113 +262,91 @@ public class KhodeResourceProvider implements RealmResourceProvider {
     @GET
     @Path("totp/status/{user_id}")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Get TOTP status for user",
-            description = "This endpoint returns the TOTP status for the user."
-    )
-    @APIResponse(
-            responseCode = "200",
-            description = "",
-            content = {@Content(
-                    schema = @Schema(
-                            implementation = Response.class,
-                            type = SchemaType.OBJECT
-                    )
-            )}
-    )
+    @Operation(summary = "Get TOTP status for user")
+    @APIResponse(responseCode = "200", description = "TOTP status retrieved successfully")
+    @APIResponse(responseCode = "400", description = "Invalid user ID")
+    @APIResponse(responseCode = "500", description = "Internal server error")
     public Response getTotpStatus(@PathParam("user_id") final String userid) {
-        final UserModel user = checkPermissionsAndGetUser(userid);
-        final RealmModel realm = session.getContext().getRealm();
+        Response validation = validateUserId(userid);
+        if (validation != null) return validation;
 
-        TotpBean totpBean = new TotpBean(session, realm, user, null);
+        try {
+            final UserModel user = checkPermissionsAndGetUser(userid);
+            final RealmModel realm = session.getContext().getRealm();
+            TotpBean totpBean = new TotpBean(session, realm, user, null);
 
-        return Response.ok(Map.of(
-                "enabled", totpBean.isEnabled(),
-                "credentials", totpBean.getOtpCredentials().stream()
-                        .map(credential -> Map.of(
-                                "id", credential.getId(),
-                                "type", credential.getType(),
-                                "createdDate", credential.getCreatedDate()
-                        ))
-                        .collect(Collectors.toList())
-        )).build();
+            return Response.ok(Map.of(
+                    "enabled", totpBean.isEnabled(),
+                    "credentials", totpBean.getOtpCredentials().stream()
+                            .map(credential -> Map.of(
+                                    "id", credential.getId(),
+                                    "type", credential.getType(),
+                                    "createdDate", credential.getCreatedDate()
+                            ))
+                            .collect(Collectors.toList()),
+                    "userId", userid
+            )).build();
+        } catch (Exception e) {
+            return handleServerError("getting TOTP status", userid, e);
+        }
     }
 
     @POST
     @Path("totp/validate/{user_id}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Validate TOTP code",
-            description = "This endpoint validates the TOTP code for the user."
-    )
-    @APIResponse(
-            responseCode = "200",
-            description = "",
-            content = {@Content(
-                    schema = @Schema(
-                            implementation = Response.class,
-                            type = SchemaType.OBJECT
-                    )
-            )}
-    )
+    @Operation(summary = "Validate TOTP code")
+    @APIResponse(responseCode = "200", description = "TOTP code validated successfully")
+    @APIResponse(responseCode = "400", description = "Invalid user ID or code")
+    @APIResponse(responseCode = "500", description = "Internal server error")
     public Response validateTotp(@PathParam("user_id") final String userid, Map<String, String> data) {
-        final UserModel user = checkPermissionsAndGetUser(userid);
-        final RealmModel realm = session.getContext().getRealm();
-        String code = data.get("code");
+        Response validation = validateUserId(userid);
+        if (validation != null) return validation;
 
-        if (code == null || code.trim().isEmpty()) {
-            throw new BadRequestException("Code is required");
+        try {
+            validation = validateTotpCode(data.get("code"));
+            if (validation != null) return validation;
+
+            final UserModel user = checkPermissionsAndGetUser(userid);
+            validation = checkTotpEnabled(user, true);
+            if (validation != null) return validation;
+
+            final RealmModel realm = session.getContext().getRealm();
+            OTPPolicy otpPolicy = realm.getOTPPolicy();
+            TimeBasedOTP timeBasedOTP = new TimeBasedOTP(
+                    otpPolicy.getAlgorithm(),
+                    otpPolicy.getDigits(),
+                    otpPolicy.getPeriod(),
+                    0
+            );
+
+            var totpCredentials = user.credentialManager()
+                    .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
+                    .toList();
+            OTPCredentialModel credential = OTPCredentialModel.createFromCredentialModel(totpCredentials.getFirst());
+            
+            if (!timeBasedOTP.validateTOTP(data.get("code"), credential.getDecodedSecret())) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Invalid code"))
+                        .build();
+            }
+
+            return Response.ok(Map.of(
+                    "message", "TOTP code validated successfully",
+                    "valid", true,
+                    "userId", userid
+            )).build();
+        } catch (Exception e) {
+            return handleServerError("validating TOTP code", userid, e);
         }
-
-        // Get TOTP credentials
-        var totpCredentials = user.credentialManager()
-                .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
-                .toList();
-
-        if (totpCredentials.isEmpty()) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "TOTP is not enabled for this user"))
-                    .build();
-        }
-
-        // Get OTP policy
-        OTPPolicy otpPolicy = realm.getOTPPolicy();
-        TimeBasedOTP timeBasedOTP = new TimeBasedOTP(
-                otpPolicy.getAlgorithm(),
-                otpPolicy.getDigits(),
-                otpPolicy.getPeriod(),
-                0
-        );
-
-        // Get the first TOTP credential
-        OTPCredentialModel credential = OTPCredentialModel.createFromCredentialModel(totpCredentials.getFirst());
-
-        // Validate the code
-        boolean validCode = timeBasedOTP.validateTOTP(code, credential.getDecodedSecret());
-
-        if (!validCode) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid code"))
-                    .build();
-        }
-
-        return Response.ok(Map.of(
-                "message", "TOTP code validated successfully",
-                "valid", true
-        )).build();
     }
 
     @DELETE
     @Path("totp/{user_id}")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Disable TOTP for user",
-            description = "This endpoint disables TOTP for the user."
-    )
     @APIResponse(
             responseCode = "200",
-            description = "",
+            description = "TOTP disabled successfully",
             content = {@Content(
                     schema = @Schema(
                             implementation = Response.class,
@@ -334,28 +354,56 @@ public class KhodeResourceProvider implements RealmResourceProvider {
                     )
             )}
     )
+    @APIResponse(
+            responseCode = "400",
+            description = "TOTP not enabled or invalid user ID"
+    )
+    @APIResponse(
+            responseCode = "500",
+            description = "Internal server error"
+        )
+    @Operation(
+            summary = "Disable TOTP for user",
+            description = "This endpoint disables TOTP for the user."
+    )
     public Response disableTotp(@PathParam("user_id") final String userid) {
-        final UserModel user = checkPermissionsAndGetUser(userid);
+        Response validation = validateUserId(userid);
+        if (validation != null) return validation;
 
-        // Get all TOTP credentials
-        var totpCredentials = user.credentialManager()
-                .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
-                .toList();
+        try {
+            final UserModel user = checkPermissionsAndGetUser(userid);
+            
+            // Get all TOTP credentials
+            var totpCredentials = user.credentialManager()
+                    .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
+                    .toList();
 
-        if (totpCredentials.isEmpty()) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "TOTP is not enabled for this user"))
-                    .build();
+            if (totpCredentials.isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "TOTP is not enabled for this user"))
+                        .build();
+            }
+
+            // Remove all TOTP credentials
+            for (var credential : totpCredentials) {
+                try {
+                    user.credentialManager().removeStoredCredentialById(credential.getId());
+                    log.info("TOTP credential removed for user: " + userid);
+                } catch (Exception e) {
+                    log.info("Failed to remove TOTP credential for user: " + userid);
+                    return Response.serverError()
+                            .entity(Map.of("error", "Failed to disable TOTP"))
+                            .build();
+                }
+            }
+            
+            return Response.ok(Map.of(
+                    "message", "TOTP disabled successfully",
+                    "enabled", false,
+                    "userId", userid
+            )).build();
+        } catch (Exception e) {
+            return handleServerError("disabling TOTP", userid, e);
         }
-
-        // Remove all TOTP credentials
-        totpCredentials.forEach(credential ->
-                user.credentialManager().removeStoredCredentialById(credential.getId())
-        );
-
-        return Response.ok(Map.of(
-                "message", "TOTP disabled successfully",
-                "enabled", false
-        )).build();
     }
 }
