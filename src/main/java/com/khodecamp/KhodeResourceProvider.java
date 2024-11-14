@@ -31,6 +31,16 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
 
     private final KeycloakSession session;
+    // Response codes
+    private static final int CODE_SUCCESS = 0;
+    private static final int CODE_INVALID_USER_ID = 1;
+    private static final int CODE_INVALID_CODE = 2;
+    private static final int CODE_TOTP_NOT_ENABLED = 3;
+    private static final int CODE_TOTP_ALREADY_ENABLED = 4;
+    private static final int CODE_SERVER_ERROR = 5;
+    private static final int CODE_TOTP_SETUP_REQUIRED = 6;
+    private static final int CODE_INVALID_TOTP = 7;
+    private static final int CODE_OPERATION_FAILED = 8;
 
     @Override
     public Object getResource() {
@@ -72,7 +82,10 @@ public class KhodeResourceProvider implements RealmResourceProvider {
     private Response validateUserId(String userid) {
         if (userid == null || userid.trim().isEmpty()) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid user ID"))
+                    .entity(Map.of(
+                            "error", "Invalid user ID",
+                            "code", CODE_INVALID_USER_ID
+                    ))
                     .build();
         }
         return null;
@@ -81,7 +94,7 @@ public class KhodeResourceProvider implements RealmResourceProvider {
     private Response validateTotpCode(String code) {
         if (code == null || code.trim().isEmpty()) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Code is required"))
+                    .entity(Map.of("error", "Code is required", "code", CODE_INVALID_CODE))
                     .build();
         }
         return null;
@@ -91,28 +104,34 @@ public class KhodeResourceProvider implements RealmResourceProvider {
         var totpCredentials = user.credentialManager()
                 .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
                 .toList();
-        
+
         boolean hasTotp = !totpCredentials.isEmpty();
-        
+
         if (shouldBeEnabled && !hasTotp) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "TOTP is not enabled for this user"))
+                    .entity(Map.of(
+                            "error", "TOTP is not enabled for this user",
+                            "code", CODE_TOTP_NOT_ENABLED
+                    ))
                     .build();
         }
-        
+
         if (!shouldBeEnabled && hasTotp) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "TOTP is already configured for this user"))
+                    .entity(Map.of(
+                            "error", "TOTP is already configured for this user",
+                            "code", CODE_TOTP_ALREADY_ENABLED
+                    ))
                     .build();
         }
-        
+
         return null;
     }
 
     private Response handleServerError(String operation, String userid, Exception e) {
         log.error("Error while " + operation + " for user: " + userid, e);
         return Response.serverError()
-                .entity(Map.of("error", "Internal server error"))
+                .entity(Map.of("error", "Internal server error", "code", CODE_SERVER_ERROR))
                 .build();
     }
 
@@ -137,7 +156,8 @@ public class KhodeResourceProvider implements RealmResourceProvider {
             return Response.ok(Map.of(
                     "configured", hasTotp,
                     "message", hasTotp ? "TOTP is configured for this user" : "TOTP is not configured for this user",
-                    "userId", userid
+                    "userId", userid,
+                    "code", CODE_SUCCESS
             )).build();
         } catch (Exception e) {
             return handleServerError("checking TOTP configuration", userid, e);
@@ -157,7 +177,7 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
         try {
             final UserModel user = checkPermissionsAndGetUser(userid);
-            
+
             // Check if TOTP is already configured
             validation = checkTotpEnabled(user, false);
             if (validation != null) return validation;
@@ -177,7 +197,8 @@ public class KhodeResourceProvider implements RealmResourceProvider {
                             "type", otpPolicy.getType()
                     ),
                     "supportedApplications", totpBean.getSupportedApplications(),
-                    "userId", userid
+                    "userId", userid,
+                    "code", CODE_SUCCESS
             )).build();
         } catch (Exception e) {
             return handleServerError("setting up TOTP", userid, e);
@@ -215,7 +236,11 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
         String totpSecret = user.getFirstAttribute("temp_totp_secret");
         if (totpSecret == null) {
-            throw new BadRequestException("TOTP secret not found. Please setup TOTP first.");
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of(
+                            "error", "TOTP setup required",
+                            "code", CODE_TOTP_SETUP_REQUIRED
+                    )).build();
         }
 
         OTPPolicy otpPolicy = realm.getOTPPolicy();
@@ -235,7 +260,7 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
         if (!validCode) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid code"))
+                    .entity(Map.of("error", "Invalid code", "code", CODE_INVALID_TOTP))
                     .build();
         }
 
@@ -255,7 +280,8 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
         return Response.ok(Map.of(
                 "message", "TOTP enabled successfully",
-                "enabled", true
+                "enabled", true,
+                "code", CODE_SUCCESS
         )).build();
     }
 
@@ -284,7 +310,8 @@ public class KhodeResourceProvider implements RealmResourceProvider {
                                     "createdDate", credential.getCreatedDate()
                             ))
                             .collect(Collectors.toList()),
-                    "userId", userid
+                    "userId", userid,
+                    "code", CODE_SUCCESS
             )).build();
         } catch (Exception e) {
             return handleServerError("getting TOTP status", userid, e);
@@ -324,17 +351,18 @@ public class KhodeResourceProvider implements RealmResourceProvider {
                     .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
                     .toList();
             OTPCredentialModel credential = OTPCredentialModel.createFromCredentialModel(totpCredentials.getFirst());
-            
+
             if (!timeBasedOTP.validateTOTP(data.get("code"), credential.getDecodedSecret())) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", "Invalid code"))
+                        .entity(Map.of("error", "Invalid code", "code", CODE_INVALID_TOTP))
                         .build();
             }
 
             return Response.ok(Map.of(
                     "message", "TOTP code validated successfully",
                     "valid", true,
-                    "userId", userid
+                    "userId", userid,
+                    "code", CODE_SUCCESS
             )).build();
         } catch (Exception e) {
             return handleServerError("validating TOTP code", userid, e);
@@ -361,7 +389,7 @@ public class KhodeResourceProvider implements RealmResourceProvider {
     @APIResponse(
             responseCode = "500",
             description = "Internal server error"
-        )
+    )
     @Operation(
             summary = "Disable TOTP for user",
             description = "This endpoint disables TOTP for the user."
@@ -372,7 +400,7 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
         try {
             final UserModel user = checkPermissionsAndGetUser(userid);
-            
+
             // Get all TOTP credentials
             var totpCredentials = user.credentialManager()
                     .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
@@ -380,7 +408,10 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
             if (totpCredentials.isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", "TOTP is not enabled for this user"))
+                        .entity(Map.of(
+                                "error", "TOTP is not enabled for this user",
+                                "code", CODE_TOTP_NOT_ENABLED
+                        ))
                         .build();
             }
 
@@ -392,18 +423,99 @@ public class KhodeResourceProvider implements RealmResourceProvider {
                 } catch (Exception e) {
                     log.info("Failed to remove TOTP credential for user: " + userid);
                     return Response.serverError()
-                            .entity(Map.of("error", "Failed to disable TOTP"))
+                            .entity(Map.of("error", "Failed to disable TOTP", "code", CODE_OPERATION_FAILED))
                             .build();
                 }
             }
-            
+
             return Response.ok(Map.of(
                     "message", "TOTP disabled successfully",
                     "enabled", false,
-                    "userId", userid
+                    "userId", userid,
+                    "code", CODE_SUCCESS
             )).build();
         } catch (Exception e) {
             return handleServerError("disabling TOTP", userid, e);
+        }
+    }
+
+    @POST
+    @Path("totp/disable-with-validation/{user_id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(
+            summary = "Disable TOTP with validation for user",
+            description = "This endpoint validates TOTP before disabling it for the user"
+    )
+    @APIResponse(
+            responseCode = "200",
+            description = "TOTP disabled successfully",
+            content = {@Content(
+                    schema = @Schema(
+                            implementation = Response.class,
+                            type = SchemaType.OBJECT
+                    )
+            )}
+    )
+    @APIResponse(responseCode = "400", description = "TOTP not enabled, invalid code, or invalid user ID")
+    @APIResponse(responseCode = "500", description = "Internal server error")
+    public Response disableTotpWithValidation(@PathParam("user_id") final String userid, Map<String, String> data) {
+        Response validation = validateUserId(userid);
+        if (validation != null) return validation;
+
+        try {
+            validation = validateTotpCode(data.get("code"));
+            if (validation != null) return validation;
+
+            final UserModel user = checkPermissionsAndGetUser(userid);
+
+            // Check if TOTP is enabled
+            validation = checkTotpEnabled(user, true);
+            if (validation != null) return validation;
+
+            // Validate TOTP code
+            final RealmModel realm = session.getContext().getRealm();
+            OTPPolicy otpPolicy = realm.getOTPPolicy();
+            TimeBasedOTP timeBasedOTP = new TimeBasedOTP(
+                    otpPolicy.getAlgorithm(),
+                    otpPolicy.getDigits(),
+                    otpPolicy.getPeriod(),
+                    0
+            );
+
+            var totpCredentials = user.credentialManager()
+                    .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
+                    .toList();
+            OTPCredentialModel credential = OTPCredentialModel.createFromCredentialModel(totpCredentials.getFirst());
+
+            if (!timeBasedOTP.validateTOTP(data.get("code"), credential.getDecodedSecret())) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Invalid code", "code", CODE_INVALID_TOTP))
+                        .build();
+            }
+
+            // Remove all TOTP credentials after validation
+            for (var cred : totpCredentials) {
+                try {
+                    user.credentialManager().removeStoredCredentialById(cred.getId());
+                    log.info("TOTP credential removed for user: " + userid);
+                } catch (Exception e) {
+                    log.error("Failed to remove TOTP credential for user: " + userid, e);
+                    return Response.serverError()
+                            .entity(Map.of("error", "Failed to disable TOTP", "code", CODE_OPERATION_FAILED))
+                            .build();
+                }
+            }
+
+            return Response.ok(Map.of(
+                    "message", "TOTP validated and disabled successfully",
+                    "enabled", false,
+                    "userId", userid,
+                    "code", CODE_SUCCESS
+            )).build();
+
+        } catch (Exception e) {
+            return handleServerError("disabling TOTP with validation", userid, e);
         }
     }
 }
