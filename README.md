@@ -74,7 +74,9 @@ Returns:
 ```json
 {
   "configured": true,
-  "message": "TOTP is configured for this user"
+  "message": "TOTP is configured for this user",
+  "userId": "user-123",
+  "code": 0
 }
 ```
 
@@ -101,7 +103,9 @@ Returns:
   "supportedApplications": [
     "FreeOTP",
     "Google Authenticator"
-  ]
+  ],
+  "userId": "user-123",
+  "code": 0
 }
 ```
 
@@ -123,7 +127,8 @@ Returns:
 ```json
 {
   "message": "TOTP enabled successfully",
-  "enabled": true
+  "enabled": true,
+  "code": 0
 }
 ```
 
@@ -146,7 +151,9 @@ Returns:
       "type": "otp",
       "createdDate": 1234567890
     }
-  ]
+  ],
+  "userId": "user-123",
+  "code": 0
 }
 ```
 
@@ -168,7 +175,9 @@ Returns:
 ```json
 {
   "message": "TOTP code validated successfully",
-  "valid": true
+  "valid": true,
+  "userId": "user-123",
+  "code": 0
 }
 ```
 
@@ -185,16 +194,58 @@ Returns:
 ```json
 {
   "message": "TOTP disabled successfully",
-  "enabled": false
+  "enabled": false,
+  "userId": "user-123",
+  "code": 0
 }
 ```
 
 Disables TOTP for the user.
 
+### Disable TOTP with Validation (Disable with single endpoint request)
+
+```http
+POST /realms/{realm}/khode-two-factor-auth/totp/disable-with-validation/{user_id}
+Content-Type: application/json
+
+{
+    "code": "123456"
+}
+```
+
+Returns:
+
+```json
+{
+  "message": "TOTP validated and disabled successfully",
+  "enabled": false,
+  "userId": "user-123",
+  "code": 0
+}
+```
+
+Validates the TOTP code before disabling TOTP for the user. This provides an additional security layer when disabling 2FA.
+
 ## Error Handling
 
 The extension provides appropriate error responses for various scenarios, such as invalid codes, missing TOTP setup,
 etc.
+
+### API Response Codes
+
+All API endpoints return a standardized `code` field in their responses. Here's what each code means:
+
+| Code | Description | Common Scenarios |
+|------|-------------|------------------|
+| 0 | Success | Operation completed successfully |
+| 1 | Invalid User ID | Missing or malformed user ID |
+| 2 | Invalid Code Format | TOTP code is missing or malformed |
+| 3 | TOTP Not Enabled | Attempting operations on non-enabled TOTP |
+| 4 | TOTP Already Enabled | Attempting to enable already configured TOTP |
+| 5 | Server Error | Unexpected server-side errors |
+| 6 | TOTP Setup Required | Trying to verify without setup |
+| 7 | Invalid TOTP Code | Incorrect TOTP code provided |
+| 8 | Operation Failed | Failed to complete the requested operation |
 
 ## Dependencies
 
