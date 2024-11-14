@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.1.1] - 2024-11-15
+## [1.1.1] - 2024-11-14
 
 ### Changed
 - Improved error handling across all endpoints
