@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.1] - 2024-11-15
+
+### Changed
+- Refactored code by moving business logic from `KhodeResourceProvider` to new `KhodeResourceService` class
+- Improved code organization and separation of concerns
+- Enhanced maintainability by isolating service logic from resource provider
+
+### Added
+- New `KhodeResourceService` class to handle all TOTP-related business logic
+
+### Technical
+- Simplified `KhodeResourceProvider` by delegating all business logic to service layer
+- Improved error handling with centralized error management in service layer
+- Better separation between API endpoint definitions and business logic implementation
+
 ## [1.2.0] - 2024-11-15
 
 ### Added
