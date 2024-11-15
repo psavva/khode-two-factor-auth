@@ -12,6 +12,10 @@ realm.
 - Get TOTP status for a user
 - Validate TOTP code
 - Disable TOTP for a user
+- Flexible authentication support:
+   - Client credentials (service account) authentication
+   - User token authentication
+   - Per-endpoint authorization controls
 
 This extension is designed to integrate seamlessly with existing Keycloak deployments, offering developers and
 administrators greater flexibility in implementing and managing 2FA.
@@ -61,7 +65,41 @@ This extension provides the following REST endpoints for managing TOTP authentic
 **Note:** Requirement for before using it:
    - Simple URL: `http://keycloak-server:[port]/realms/{realm}/khode-two-factor-auth/`
    - Replace `{realm}` and `{user_id}` with the appropriate values.
-   - All endpoints require authentication using a bearer token with appropriate permissions.
+
+**Authentication Requirements:**
+- The API supports two authentication methods:
+   1. Client Credentials (Service Account):
+      - Requires a bearer token from a service account
+      - Can access any user's TOTP settings
+   2. User Token:
+      - Requires a bearer token from a regular user
+      - Can only access their own TOTP settings
+- All requests must include an `Authorization: Bearer <token>` header
+
+### Authentication Examples
+
+**Using Client Credentials:**
+```bash
+# Get service account token
+TOKEN=$(curl -X POST \
+  "http://keycloak-server/realms/master/protocol/openid-connect/token" \
+  -d "grant_type=client_credentials" \
+  -d "client_id=your-client" \
+  -d "client_secret=your-secret" \
+  | jq -r '.access_token')
+```
+
+**Using User Token:**
+```bash
+# Get user token
+TOKEN=$(curl -X POST \
+  "http://keycloak-server/realms/master/protocol/openid-connect/token" \
+  -d "grant_type=password" \
+  -d "client_id=your-client" \
+  -d "username=your-username" \
+  -d "password=your-password" \
+  | jq -r '.access_token')
+```
 
 ### Check if TOTP is Configured
 
@@ -246,6 +284,8 @@ All API endpoints return a standardized `code` field in their responses. Here's 
 | 6 | TOTP Setup Required | Trying to verify without setup |
 | 7 | Invalid TOTP Code | Incorrect TOTP code provided |
 | 8 | Operation Failed | Failed to complete the requested operation |
+| 9 | Unauthorized | Missing or invalid authentication |
+| 10 | Forbidden | Insufficient permissions or access denied |
 
 ## Dependencies
 

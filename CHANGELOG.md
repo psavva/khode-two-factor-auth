@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.3.0] - 2024-11-15
+
+### Added
+- Support for dual authentication methods:
+  - Client credentials (service account)
+  - User token authentication
+- New authentication validation logic in KhodeResourceService
+- Enhanced security checks for user-specific access
+
+### Changed
+- Modified authentication mechanism to accept either client credentials or user token
+- Improved authorization checks with user-specific validation
+- Enhanced error handling for authentication and authorization failures
+- Added new standardized response codes:
+  - 9: Unauthorized (Authentication required)
+  - 10: Forbidden (Access denied)
+- Updated all endpoints with new authentication/authorization:
+
+### Security
+- Added flexible authentication support with proper access controls
+- Enhanced user access validation for non-service account requests
+- Service accounts can access any user's TOTP settings
+- User tokens can only access their own TOTP settings
+
+### Documentation
+- Updated API documentation with new authentication requirements
+- Added examples for both client credentials and user token authentication
+- Added authentication examples in README.md
+
+
 ## [1.2.1] - 2024-11-15
 
 ### Changed

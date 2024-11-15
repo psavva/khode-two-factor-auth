@@ -15,7 +15,6 @@ import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager.AuthResult;
 
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 @JBossLog
@@ -33,28 +32,42 @@ public class KhodeResourceService {
     private static final int CODE_TOTP_SETUP_REQUIRED = 6;
     private static final int CODE_INVALID_TOTP = 7;
     private static final int CODE_OPERATION_FAILED = 8;
+    private static final int CODE_UNAUTHORIZED = 9;
+    private static final int CODE_FORBIDDEN = 10;
 
     // get user and from the session via bearer token
-    private AuthResult checkAuth() {
+    private AuthResult checkAuth(String userId) { // userId can be null
         AuthResult auth = new AppAuthManager.BearerTokenAuthenticator(session).authenticate();
 
         if (auth == null) {
-            throw new NotAuthorizedException("Bearer");
+            throw new NotAuthorizedException("Bearer token required");
         }
 
-        return auth;
+        // Check if it's a service account (client authentication)
+        UserModel authenticatedUser = auth.getUser();
+        if (authenticatedUser != null && authenticatedUser.getServiceAccountClientLink() != null) {
+            return auth;
+        }
+
+        // Check if it's a user token
+        if (authenticatedUser != null && authenticatedUser.getId() != null) {
+            // Check if the user ID in the token matches the requested user ID
+            if (userId != null && !userId.equals(authenticatedUser.getId())) {
+                throw new ForbiddenException("Only the owner of the token can access this resource");
+            }
+
+            return auth;
+        }
+
+        throw new NotAuthorizedException("Invalid authentication: requires either client credentials or user token");
     }
 
-    // Check permissions and get user
-    private UserModel checkPermissionsAndGetUser(final String userid) {
-
+    // get user from the session via userId
+    private UserModel getUserContext(final String userid) {
         // Check if the request is authenticated
         final UserModel user = this.session.users().getUserById(this.session.getContext().getRealm(), userid);
         if (user == null) {
             throw new ForbiddenException("invalid user");
-        }
-        if (user.getServiceAccountClientLink() != null) {
-            throw new ForbiddenException("Service account not allowed");
         }
 
         return user;
@@ -118,11 +131,14 @@ public class KhodeResourceService {
     }
 
     public Response isTotpConfigured(final String userid) {
-        Response validation = validateUserId(userid);
-        if (validation != null) return validation;
-
         try {
-            final UserModel user = checkPermissionsAndGetUser(userid);
+            Response validation = validateUserId(userid);
+            if (validation != null) return validation;
+
+            // Check if the request is authenticated
+            checkAuth(userid);
+
+            final UserModel user = getUserContext(userid);
             boolean hasTotp = user.credentialManager()
                     .getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
                     .findAny()
@@ -134,17 +150,34 @@ public class KhodeResourceService {
                     "userId", userid,
                     "code", CODE_SUCCESS
             )).build();
+        } catch (NotAuthorizedException e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of(
+                            "error", "Unauthorized",
+                            "code", CODE_UNAUTHORIZED
+                    ))
+                    .build();
+        } catch (ForbiddenException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of(
+                            "error", "Forbidden",
+                            "code", CODE_FORBIDDEN
+                    ))
+                    .build();
         } catch (Exception e) {
             return handleServerError("checking TOTP configuration", userid, e);
         }
     }
 
     public Response setupTotp(@PathParam("user_id") final String userid) {
-        Response validation = validateUserId(userid);
-        if (validation != null) return validation;
-
         try {
-            final UserModel user = checkPermissionsAndGetUser(userid);
+            Response validation = validateUserId(userid);
+            if (validation != null) return validation;
+
+            // Check if the request is authenticated
+            checkAuth(userid);
+
+            final UserModel user = getUserContext(userid);
 
             // Check if TOTP is already configured
             validation = checkTotpEnabled(user, false);
@@ -168,108 +201,164 @@ public class KhodeResourceService {
                     "userId", userid,
                     "code", CODE_SUCCESS
             )).build();
+        } catch (NotAuthorizedException e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of(
+                            "error", "Unauthorized",
+                            "code", CODE_UNAUTHORIZED
+                    ))
+                    .build();
+        } catch (ForbiddenException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of(
+                            "error", "Forbidden",
+                            "code", CODE_FORBIDDEN
+                    ))
+                    .build();
         } catch (Exception e) {
             return handleServerError("setting up TOTP", userid, e);
         }
     }
 
     public Response verifyAndEnableTotp(final String userid, Map<String, String> data) {
-        Response validation = validateUserId(userid);
-        if (validation != null) return validation;
+        try {
+            Response validation = validateUserId(userid);
+            if (validation != null) return validation;
 
-        final UserModel user = checkPermissionsAndGetUser(userid);
-        final RealmModel realm = session.getContext().getRealm();
-        String code = data.get("code");
+            // Check if the request is authenticated
+            checkAuth(userid);
 
-        validation = validateTotpCode(code);
-        if (validation != null) return validation;
+            final UserModel user = getUserContext(userid);
+            final RealmModel realm = session.getContext().getRealm();
+            String code = data.get("code");
 
-        String totpSecret = user.getFirstAttribute("temp_totp_secret");
-        if (totpSecret == null) {
+            validation = validateTotpCode(code);
+            if (validation != null) return validation;
+
+            String totpSecret = user.getFirstAttribute("temp_totp_secret");
+            if (totpSecret == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of(
+                                "error", "TOTP setup required",
+                                "code", CODE_TOTP_SETUP_REQUIRED
+                        )).build();
+            }
+
+            OTPPolicy otpPolicy = realm.getOTPPolicy();
+            HmacOTP hmacOTP = new HmacOTP(
+                    otpPolicy.getDigits(),
+                    otpPolicy.getAlgorithm(),
+                    1  // lookAroundWindow - number of intervals to check
+            );
+
+            // Calculate current counter based on current time
+            long currentTimeSeconds = System.currentTimeMillis() / 1000;
+            int currentCounter = (int) (currentTimeSeconds / otpPolicy.getPeriod());
+
+            // Validate the code
+            int newCounter = hmacOTP.validateHOTP(code, totpSecret, currentCounter - 1);
+            boolean validCode = newCounter > 0;
+
+            if (!validCode) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Invalid code", "code", CODE_INVALID_TOTP))
+                        .build();
+            }
+
+            // Remove temporary secret
+            user.removeAttribute("temp_totp_secret");
+
+            // Create OTP credential
+            OTPCredentialModel otpCredential = OTPCredentialModel.createTOTP(
+                    totpSecret,
+                    otpPolicy.getDigits(),
+                    otpPolicy.getPeriod(),
+                    otpPolicy.getAlgorithm()
+            );
+
+            // Store the credential
+            user.credentialManager().createStoredCredential(otpCredential);
+
+            return Response.ok(Map.of(
+                    "message", "TOTP enabled successfully",
+                    "enabled", true,
+                    "code", CODE_SUCCESS
+            )).build();
+        } catch (NotAuthorizedException e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of(
+                            "error", "Unauthorized",
+                            "code", CODE_UNAUTHORIZED
+                    ))
+                    .build();
+        } catch (ForbiddenException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of(
-                            "error", "TOTP setup required",
-                            "code", CODE_TOTP_SETUP_REQUIRED
-                    )).build();
-        }
-
-        OTPPolicy otpPolicy = realm.getOTPPolicy();
-        HmacOTP hmacOTP = new HmacOTP(
-                otpPolicy.getDigits(),
-                otpPolicy.getAlgorithm(),
-                1  // lookAroundWindow - number of intervals to check
-        );
-
-        // Calculate current counter based on current time
-        long currentTimeSeconds = System.currentTimeMillis() / 1000;
-        int currentCounter = (int) (currentTimeSeconds / otpPolicy.getPeriod());
-
-        // Validate the code
-        int newCounter = hmacOTP.validateHOTP(code, totpSecret, currentCounter - 1);
-        boolean validCode = newCounter > 0;
-
-        if (!validCode) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid code", "code", CODE_INVALID_TOTP))
+                            "error", "Forbidden",
+                            "code", CODE_FORBIDDEN
+                    ))
                     .build();
+        } catch (Exception e) {
+            return handleServerError("verifying and enabling TOTP", userid, e);
         }
-
-        // Remove temporary secret
-        user.removeAttribute("temp_totp_secret");
-
-        // Create OTP credential
-        OTPCredentialModel otpCredential = OTPCredentialModel.createTOTP(
-                totpSecret,
-                otpPolicy.getDigits(),
-                otpPolicy.getPeriod(),
-                otpPolicy.getAlgorithm()
-        );
-
-        // Store the credential
-        user.credentialManager().createStoredCredential(otpCredential);
-
-        return Response.ok(Map.of(
-                "message", "TOTP enabled successfully",
-                "enabled", true,
-                "code", CODE_SUCCESS
-        )).build();
     }
 
     public Response getTotpStatus(final String userid) {
-        Response validation = validateUserId(userid);
-        if (validation != null) return validation;
-
         try {
-            final UserModel user = checkPermissionsAndGetUser(userid);
+            Response validation = validateUserId(userid);
+            if (validation != null) return validation;
+
+            // Check if the request is authenticated
+            checkAuth(userid);
+
+            final UserModel user = getUserContext(userid);
             final RealmModel realm = session.getContext().getRealm();
             TotpBean totpBean = new TotpBean(session, realm, user, null);
 
+            var credentials = totpBean.getOtpCredentials().stream()
+                    .map(credential -> Map.of(
+                            "id", credential.getId(),
+                            "type", credential.getType(),
+                            "createdDate", credential.getCreatedDate()
+                    ))
+                    .toList();
+
             return Response.ok(Map.of(
                     "enabled", totpBean.isEnabled(),
-                    "credentials", totpBean.getOtpCredentials().stream()
-                            .map(credential -> Map.of(
-                                    "id", credential.getId(),
-                                    "type", credential.getType(),
-                                    "createdDate", credential.getCreatedDate()
-                            ))
-                            .collect(Collectors.toList()),
+                    "credentials", credentials,
                     "userId", userid,
                     "code", CODE_SUCCESS
             )).build();
+        } catch (NotAuthorizedException e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of(
+                            "error", "Unauthorized",
+                            "code", CODE_UNAUTHORIZED
+                    ))
+                    .build();
+        } catch (ForbiddenException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of(
+                            "error", "Forbidden",
+                            "code", CODE_FORBIDDEN
+                    ))
+                    .build();
         } catch (Exception e) {
             return handleServerError("getting TOTP status", userid, e);
         }
     }
 
-    public Response validateTotp(final String userid, Map<String, String> data) {
-        Response validation = validateUserId(userid);
+    public Response validateTotp(final String userId, Map<String, String> data) {
+        Response validation = validateUserId(userId);
         if (validation != null) return validation;
 
         try {
             validation = validateTotpCode(data.get("code"));
             if (validation != null) return validation;
 
-            final UserModel user = checkPermissionsAndGetUser(userid);
+            checkAuth(userId);
+
+            final UserModel user = getUserContext(userId);
             validation = checkTotpEnabled(user, true);
             if (validation != null) return validation;
 
@@ -296,20 +385,37 @@ public class KhodeResourceService {
             return Response.ok(Map.of(
                     "message", "TOTP code validated successfully",
                     "valid", true,
-                    "userId", userid,
+                    "userId", userId,
                     "code", CODE_SUCCESS
             )).build();
+        } catch (NotAuthorizedException e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of(
+                            "error", "Unauthorized",
+                            "code", CODE_UNAUTHORIZED
+                    ))
+                    .build();
+        } catch (ForbiddenException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of(
+                            "error", "Forbidden",
+                            "code", CODE_FORBIDDEN
+                    ))
+                    .build();
         } catch (Exception e) {
-            return handleServerError("validating TOTP code", userid, e);
+            return handleServerError("validating TOTP code", userId, e);
         }
     }
 
     public Response disableTotp(final String userid) {
-        Response validation = validateUserId(userid);
-        if (validation != null) return validation;
-
         try {
-            final UserModel user = checkPermissionsAndGetUser(userid);
+            Response validation = validateUserId(userid);
+            if (validation != null) return validation;
+
+            // Check if the request is authenticated
+            checkAuth(userid);
+
+            final UserModel user = getUserContext(userid);
 
             // Get all TOTP credentials
             var totpCredentials = user.credentialManager()
@@ -344,20 +450,38 @@ public class KhodeResourceService {
                     "userId", userid,
                     "code", CODE_SUCCESS
             )).build();
+        } catch (NotAuthorizedException e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of(
+                            "error", "Unauthorized",
+                            "code", CODE_UNAUTHORIZED
+                    ))
+                    .build();
+        } catch (ForbiddenException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of(
+                            "error", "Forbidden",
+                            "code", CODE_FORBIDDEN
+                    ))
+                    .build();
         } catch (Exception e) {
             return handleServerError("disabling TOTP", userid, e);
         }
     }
 
     public Response disableTotpWithValidation(final String userid, Map<String, String> data) {
-        Response validation = validateUserId(userid);
-        if (validation != null) return validation;
-
         try {
+
+            Response validation = validateUserId(userid);
+            if (validation != null) return validation;
+
             validation = validateTotpCode(data.get("code"));
             if (validation != null) return validation;
 
-            final UserModel user = checkPermissionsAndGetUser(userid);
+            // Check if the request is authenticated
+            checkAuth(userid);
+
+            final UserModel user = getUserContext(userid);
 
             // Check if TOTP is enabled
             validation = checkTotpEnabled(user, true);
@@ -404,6 +528,20 @@ public class KhodeResourceService {
                     "code", CODE_SUCCESS
             )).build();
 
+        } catch (NotAuthorizedException e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of(
+                            "error", "Unauthorized",
+                            "code", CODE_UNAUTHORIZED
+                    ))
+                    .build();
+        } catch (ForbiddenException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of(
+                            "error", "Forbidden",
+                            "code", CODE_FORBIDDEN
+                    ))
+                    .build();
         } catch (Exception e) {
             return handleServerError("disabling TOTP with validation", userid, e);
         }
