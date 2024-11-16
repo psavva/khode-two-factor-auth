@@ -130,7 +130,7 @@ public class KhodeResourceService {
                 .build();
     }
 
-    public Response isTotpConfigured(final String userid) {
+    public Response getTotpStatus(final String userid) {
         try {
             Response validation = validateUserId(userid);
             if (validation != null) return validation;
@@ -145,8 +145,8 @@ public class KhodeResourceService {
                     .isPresent();
 
             return Response.ok(Map.of(
-                    "configured", hasTotp,
-                    "message", hasTotp ? "TOTP is configured for this user" : "TOTP is not configured for this user",
+                    "enabled", hasTotp,
+                    "message", hasTotp ? "TOTP is enabled" : "TOTP is not enabled",
                     "userId", userid,
                     "code", CODE_SUCCESS
             )).build();
@@ -300,51 +300,6 @@ public class KhodeResourceService {
                     .build();
         } catch (Exception e) {
             return handleServerError("verifying and enabling TOTP", userid, e);
-        }
-    }
-
-    public Response getTotpStatus(final String userid) {
-        try {
-            Response validation = validateUserId(userid);
-            if (validation != null) return validation;
-
-            // Check if the request is authenticated
-            checkAuth(userid);
-
-            final UserModel user = getUserContext(userid);
-            final RealmModel realm = session.getContext().getRealm();
-            TotpBean totpBean = new TotpBean(session, realm, user, null);
-
-            var credentials = totpBean.getOtpCredentials().stream()
-                    .map(credential -> Map.of(
-                            "id", credential.getId(),
-                            "type", credential.getType(),
-                            "createdDate", credential.getCreatedDate()
-                    ))
-                    .toList();
-
-            return Response.ok(Map.of(
-                    "enabled", totpBean.isEnabled(),
-                    "credentials", credentials,
-                    "userId", userid,
-                    "code", CODE_SUCCESS
-            )).build();
-        } catch (NotAuthorizedException e) {
-            return Response.status(Response.Status.UNAUTHORIZED)
-                    .entity(Map.of(
-                            "error", "Unauthorized",
-                            "code", CODE_UNAUTHORIZED
-                    ))
-                    .build();
-        } catch (ForbiddenException e) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of(
-                            "error", "Forbidden",
-                            "code", CODE_FORBIDDEN
-                    ))
-                    .build();
-        } catch (Exception e) {
-            return handleServerError("getting TOTP status", userid, e);
         }
     }
 
