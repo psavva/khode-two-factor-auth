@@ -262,6 +262,36 @@ All API endpoints return a standardized `code` field in their responses. Here's 
 | 9 | Unauthorized | Missing or invalid authentication |
 | 10 | Forbidden | Insufficient permissions or access denied |
 
+## Compatibility Matrix
+
+This table shows the compatibility between Keycloak versions and khode-2fa extension versions.
+
+| Keycloak Version | khode-2fa Version | Status      | Testing Status |
+|-----------------|-------------------|-------------|----------------|
+| 26.0.x          | 1.4.x            | ✅ Supported | ✅ Tested       |
+| 25.0.x          | 1.4.x            | ✅ Supported | ✅ Tested       |
+| 24.0.x          | 1.4.x            | ⚠️ Limited   | 🧪 In Testing   |
+| 23.0.x          | 1.4.x            | ⚠️ Limited   | ❌ Untested     |
+| 22.0.x          | 1.4.x            | ⚠️ Limited   | ❌ Untested     |
+| < 22.0.0        | < 1.4.x          | ❌ Unsupported| ❌ Untested     |
+
+### Notes
+
+- **Status**
+    - ✅ Supported: Fully tested and supported version combinations
+    - ⚠️ Limited: Should work but not officially tested
+    - ❌ Unsupported: Not tested or known to have compatibility issues
+
+- **Testing Status**
+    - ✅ Tested: Fully tested with automated and manual testing
+    - 🧪 In Testing: Currently undergoing testing
+    - ❌ Untested: No testing performed
+
+### Recommendations
+
+- For production use, we recommend using Keycloak 25.0.x or 26.0.x with khode-2fa 1.4.x
+- Other version combinations may work but are not officially tested
+
 ## Dependencies
 
 - Keycloak
