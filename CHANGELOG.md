@@ -2,16 +2,25 @@
 
 ## [1.4.0] - 2024-11-16
 
-### Changed
+### Breaking Changes
 - Renamed project from `khode-two-factor-auth` to `khode-2fa`
-- Updated all API endpoints to use new provider ID
-- Removed duplicate endpoint `isTotpConfigured` as it overlapped with `getTotpStatus` functionality
-- Updated documentation to reflect new provider ID and endpoint changes
+- Removed duplicate endpoint `isTotpConfigured` (use `getTotpStatus` instead)
+- Changed all API endpoint paths to use new provider ID
+
+### Changed
+- Updated all API endpoint paths to use `khode-2fa` identifier
+- Updated all documentation to reflect new provider ID
+- Streamlined API by consolidating status check functionality into single endpoint
+
+### Migration
+- Update all API paths from `/khode-two-factor-auth/` to `/khode-2fa/`
+- Replace `isTotpConfigured` endpoint calls with `getTotpStatus`
 
 ### Technical
 - Changed PROVIDER_ID constant in KhodeResourceProviderFactory.java
-- Updated all endpoint paths to use new `khode-2fa` identifier
-- Streamlined API by removing redundant endpoint
+- Removed redundant endpoint code from KhodeResourceService
+- Updated API path references in documentation
+
 
 ## [1.3.0] - 2024-11-15
 
