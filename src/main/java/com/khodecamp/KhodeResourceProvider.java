@@ -37,17 +37,6 @@ public class KhodeResourceProvider implements RealmResourceProvider {
 
     }
 
-    @GET
-    @Path("totp/is-configured/{user_id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    @Operation(summary = "Check if TOTP is configured for user")
-    @APIResponse(responseCode = "200", description = "TOTP status retrieved successfully")
-    @APIResponse(responseCode = "400", description = "Invalid user ID")
-    @APIResponse(responseCode = "500", description = "Internal server error")
-    public Response isTotpConfigured(@PathParam("user_id") final String userid) {
-        return khodeResourceService.isTotpConfigured(userid);
-    }
-
     @POST
     @Path("totp/setup/{user_id}")
     @Produces(MediaType.APPLICATION_JSON)

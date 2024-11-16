@@ -10,7 +10,7 @@ import org.keycloak.services.resource.RealmResourceProviderFactory;
 @AutoService(RealmResourceProviderFactory.class)
 public class KhodeResourceProviderFactory implements RealmResourceProviderFactory {
 
-    public static final String PROVIDER_ID = "khode-two-factor-auth";
+    public static final String PROVIDER_ID = "khode-2fa";
 
     @Override
     public RealmResourceProvider create(KeycloakSession keycloakSession) {
