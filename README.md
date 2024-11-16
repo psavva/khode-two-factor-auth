@@ -164,13 +164,7 @@ Returns:
 ```json
 {
   "enabled": true,
-  "credentials": [
-    {
-      "id": "credential-id",
-      "type": "otp",
-      "createdDate": 1234567890
-    }
-  ],
+  "message": "TOTP is configured for this user",
   "userId": "user-123",
   "code": 0
 }
