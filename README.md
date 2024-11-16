@@ -1,6 +1,6 @@
-# khode-two-factor-auth
+# Keycloak 2FA Rest API Extension
 
-khode-two-factor-auth is a Keycloak extension that provides a REST API for managing Time-based One-Time Password (TOTP)
+khode-2fa is a Keycloak extension that provides a REST API for managing Time-based One-Time Password (TOTP)
 authentication. This extension allows you to set up, verify, enable, disable, and validate TOTP for users in a Keycloak
 realm.
 
@@ -63,7 +63,7 @@ After installing using either method, restart Keycloak to load the new extension
 This extension provides the following REST endpoints for managing TOTP authentication.
 
 **Note:** Requirement for before using it:
-   - Simple URL: `http://keycloak-server:[port]/realms/{realm}/khode-two-factor-auth/`
+   - Simple URL: `http://keycloak-server:[port]/realms/{realm}/khode-2fa`
    - Replace `{realm}` and `{user_id}` with the appropriate values.
 
 **Authentication Requirements:**
@@ -101,29 +101,10 @@ TOKEN=$(curl -X POST \
   | jq -r '.access_token')
 ```
 
-### Check if TOTP is Configured
-
-```http
-GET /realms/{realm}/khode-two-factor-auth/totp/is-configured/{user_id}
-```
-
-Returns:
-
-```json
-{
-  "configured": true,
-  "message": "TOTP is configured for this user",
-  "userId": "user-123",
-  "code": 0
-}
-```
-
-Checks if TOTP is already configured for the user.
-
 ### Setup TOTP
 
 ```http
-POST /realms/{realm}/khode-two-factor-auth/totp/setup/{user_id}
+POST /realms/{realm}/khode-2fa/totp/setup/{user_id}
 ```
 
 Returns:
@@ -152,7 +133,7 @@ Generates a TOTP secret for the user and returns the secret and QR code.
 ### Verify and Enable TOTP
 
 ```http
-POST /realms/{realm}/khode-two-factor-auth/totp/verify/{user_id}
+POST /realms/{realm}/khode-2fa/totp/verify/{user_id}
 Content-Type: application/json
 
 {
@@ -175,7 +156,7 @@ Verifies the TOTP code and enables TOTP for the user.
 ### Get TOTP Status
 
 ```http
-GET /realms/{realm}/khode-two-factor-auth/totp/status/{user_id}
+GET /realms/{realm}/khode-2fa/totp/status/{user_id}
 ```
 
 Returns:
@@ -200,7 +181,7 @@ Returns the TOTP status and credentials for the user.
 ### Validate TOTP Code
 
 ```http
-POST /realms/{realm}/khode-two-factor-auth/totp/validate/{user_id}
+POST /realms/{realm}/khode-2fa/totp/validate/{user_id}
 Content-Type: application/json
 
 {
@@ -224,7 +205,7 @@ Validates the TOTP code for an existing TOTP setup.
 ### Disable TOTP
 
 ```http
-DELETE /realms/{realm}/khode-two-factor-auth/totp/{user_id}
+DELETE /realms/{realm}/khode-2fa/totp/{user_id}
 ```
 
 Returns:
@@ -243,7 +224,7 @@ Disables TOTP for the user.
 ### Disable TOTP with Validation (Disable with single endpoint request)
 
 ```http
-POST /realms/{realm}/khode-two-factor-auth/totp/disable-with-validation/{user_id}
+POST /realms/{realm}/khode-2fa/totp/disable-with-validation/{user_id}
 Content-Type: application/json
 
 {
